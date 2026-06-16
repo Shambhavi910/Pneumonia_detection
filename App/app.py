@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 BASE_DIR = os.path.dirname(__file__)
-MODEL_PATH = os.path.join(BASE_DIR, "best_densenet (1).keras")
+MODEL_PATH = os.path.join(BASE_DIR, "best_densenet.keras")
 SAMPLE_DIR = os.path.join(BASE_DIR, "sample_image")
 SAMPLE_PATHS = [
     os.path.join(SAMPLE_DIR, filename)
