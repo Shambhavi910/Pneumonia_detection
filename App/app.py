@@ -4,21 +4,26 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-st.set_page_config(
-    page_title="PneumoniaCare AI",
-    page_icon="🩻",
-    layout="wide",
-)
-
 BASE_DIR = os.path.dirname(__file__)
-MODEL_PATH =os.path.join(BASE_DIR, "..", "Model", "best_densenet.keras")
-SAMPLE_DIR = os.path.join(BASE_DIR, "..", "sample_image")
+MODEL_PATH = os.path.join(BASE_DIR, "..", "Model", "best_densenet.keras")
+SAMPLE_DIR = os.path.join(BASE_DIR, "sample_image")
 SAMPLE_PATHS = [
     os.path.join(SAMPLE_DIR, filename)
     for filename in sorted(os.listdir(SAMPLE_DIR))
     if filename.lower().endswith((".png", ".jpg", ".jpeg"))
 ] if os.path.isdir(SAMPLE_DIR) else []
 SAMPLE_IMAGE_PATH = SAMPLE_PATHS[0] if SAMPLE_PATHS else None
+
+print("Current directory:", os.getcwd())
+print("BASE_DIR:", BASE_DIR)
+print("MODEL_PATH:", MODEL_PATH)
+print("Model exists:", os.path.exists(MODEL_PATH))
+
+st.set_page_config(
+    page_title="PneumoniaCare AI",
+    page_icon="🩻",
+    layout="wide",
+)
 
 # Load model once
 @st.cache_resource
