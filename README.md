@@ -1,4 +1,4 @@
-﻿# Pneumonia Detection
+# Pneumonia Detection
 
 A production-oriented Streamlit dashboard for pneumonia screening from chest X-rays. The app uses a pre-trained DenseNet Keras model to provide quick inference, attention-based Grad-CAM explainability, and a clinical-style interface for demonstration purposes.
 
