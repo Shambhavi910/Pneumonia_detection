@@ -28,7 +28,15 @@ st.set_page_config(
 # Load model once
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(MODEL_PATH)
+    return tf.keras.models.load_model(MODEL_PATH, compile=False)
+
+@st.cache_resource
+def get_grad_model(_model):
+    last_conv_layer_name = get_last_conv_layer(_model)
+    return tf.keras.models.Model(
+        [_model.inputs],
+        [_model.get_layer(last_conv_layer_name).output, _model.output],
+    )
 
 @st.cache_data
 def load_image(image_path):
@@ -48,13 +56,7 @@ def get_last_conv_layer(model):
 
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None):
-    if last_conv_layer_name is None:
-        last_conv_layer_name = get_last_conv_layer(model)
-
-    grad_model = tf.keras.models.Model(
-        [model.inputs],
-        [model.get_layer(last_conv_layer_name).output, model.output],
-    )
+    grad_model = get_grad_model(model)
 
     with tf.GradientTape() as tape:
         conv_outputs, predictions = grad_model(img_array)
@@ -314,7 +316,7 @@ else:
             img = np.expand_dims(img, axis=0)
 
             st.write("Running prediction...")
-            prediction = model.predict(img, verbose=0)[0][0]
+            prediction = model(img, training=False).numpy()[0][0]
 
             st.write("Prediction completed")
             probability = float(prediction)
