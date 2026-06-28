@@ -337,13 +337,11 @@ else:
             if st.checkbox("Show Grad-CAM overlay", value=True):
                 heatmap = make_gradcam_heatmap(img, model)
                 overlay = apply_gradcam_overlay(image, heatmap)
-
-            # st.success("Prediction complete")
-            
-            st.markdown("<div class='section-title' style='margin-top:24px;'>Grad-CAM explanation</div>", unsafe_allow_html=True)
-            grad_view1, grad_view2 = st.columns(2)
-            grad_view1.image(image, caption="Original X-ray", width=300)
-            grad_view2.image(overlay, caption="Grad-CAM overlay", width=300)
+                
+                st.markdown("<div class='section-title' style='margin-top:24px;'>Grad-CAM explanation</div>", unsafe_allow_html=True)
+                grad_view1, grad_view2 = st.columns(2)
+                grad_view1.image(image, caption="Original X-ray", width=300)
+                grad_view2.image(overlay, caption="Grad-CAM overlay", width=300)
 
         with advice_col:
             if probability > 0.5:
