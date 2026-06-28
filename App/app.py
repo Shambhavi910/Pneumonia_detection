@@ -1,11 +1,12 @@
 import os
 import streamlit as st
-import tensorflow as tf
+import onnxruntime as ort
 import numpy as np
 from PIL import Image
 
 BASE_DIR = os.path.dirname(__file__)
-MODEL_PATH = os.path.join(BASE_DIR, "..", "Model", "best_densenet.keras")
+MODEL_PATH = os.path.join(BASE_DIR, "..", "Model", "best_densenet.onnx")
+WEIGHTS_PATH = os.path.join(BASE_DIR, "head_weights.npz")
 SAMPLE_DIR = os.path.join(BASE_DIR, "sample_image")
 SAMPLE_PATHS = [
     os.path.join(SAMPLE_DIR, filename)
@@ -18,6 +19,8 @@ print("Current directory:", os.getcwd())
 print("BASE_DIR:", BASE_DIR)
 print("MODEL_PATH:", MODEL_PATH)
 print("Model exists:", os.path.exists(MODEL_PATH))
+print("Weights path:", WEIGHTS_PATH)
+print("Weights exists:", os.path.exists(WEIGHTS_PATH))
 
 st.set_page_config(
     page_title="PneumoniaCare AI",
@@ -25,52 +28,51 @@ st.set_page_config(
     layout="wide",
 )
 
-# Load model once
+# Load ONNX model and classification head weights
 @st.cache_resource
-def load_model():
-    return tf.keras.models.load_model(MODEL_PATH, compile=False)
+def load_resources():
+    session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
+    weights = np.load(WEIGHTS_PATH)
+    return session, weights
 
-@st.cache_resource
-def get_grad_model(_model):
-    last_conv_layer_name = get_last_conv_layer(_model)
-    return tf.keras.models.Model(
-        [_model.inputs],
-        [_model.get_layer(last_conv_layer_name).output, _model.output],
-    )
+session, weights = load_resources()
+W_1 = weights["W_1"]
+b_1 = weights["b_1"]
+W_2 = weights["W_2"]
+b_2 = weights["b_2"]
 
 @st.cache_data
 def load_image(image_path):
     return Image.open(image_path)
 
-model = load_model()
-
-
-def get_last_conv_layer(model):
-    for layer in reversed(model.layers):
-        try:
-            if len(layer.output.shape) == 4:
-                return layer.name
-        except Exception:
-            continue
-    raise ValueError("No convolutional layer found in model.")
-
-
-def make_gradcam_heatmap(img_array, model, last_conv_layer_name=None):
-    grad_model = get_grad_model(model)
-
-    with tf.GradientTape() as tape:
-        conv_outputs, predictions = grad_model(img_array)
-        loss = predictions[:, 0]
-
-    grads = tape.gradient(loss, conv_outputs)
-    pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-    conv_outputs = conv_outputs[0]
-
-    heatmap = conv_outputs @ pooled_grads[..., tf.newaxis]
-    heatmap = tf.squeeze(heatmap)
-    heatmap = tf.maximum(heatmap, 0)
-    heatmap /= tf.math.reduce_max(heatmap) + 1e-8
-    return heatmap.numpy()
+def analyze_image(img_array):
+    # 1. Run forward pass through base conv model using ONNX Runtime
+    input_name = session.get_inputs()[0].name
+    output_name = session.get_outputs()[0].name
+    
+    # Run session
+    conv_outputs = session.run([output_name], {input_name: img_array})[0] # shape: (1, 7, 7, 1024)
+    
+    # 2. Run Global Average Pooling
+    gap = np.mean(conv_outputs, axis=(1, 2))[0] # shape: (1024,)
+    
+    # 3. Compute classification head (Dense -> ReLU -> Dense -> Sigmoid)
+    u = gap @ W_1 + b_1 # shape: (256,)
+    h = np.maximum(0, u) # ReLU
+    z = h @ W_2 + b_2 # shape: (1,)
+    probability = 1.0 / (1.0 + np.exp(-z[0])) # Sigmoid
+    
+    # 4. Compute Grad-CAM weights using the active ReLU neurons mask
+    active = (u > 0).astype(np.float32)
+    W_2_masked = W_2[:, 0] * active # shape: (256,)
+    alphas = W_1 @ W_2_masked # shape: (1024,)
+    
+    # 5. Compute Grad-CAM heatmap
+    heatmap = conv_outputs[0] @ alphas # shape: (7, 7)
+    heatmap = np.maximum(heatmap, 0)
+    heatmap /= (np.max(heatmap) + 1e-8)
+    
+    return probability, heatmap
 
 
 def apply_gradcam_overlay(original_image, heatmap, alpha=0.55):
@@ -316,10 +318,9 @@ else:
             img = np.expand_dims(img, axis=0)
 
             st.write("Running prediction...")
-            prediction = model(img, training=False).numpy()[0][0]
+            probability, heatmap = analyze_image(img)
 
             st.write("Prediction completed")
-            probability = float(prediction)
 
         if probability > 0.5:
             status_text = "PNEUMONIA"
@@ -337,7 +338,6 @@ else:
             st.metric("Pneumonia probability", f"{probability * 100:.2f}%")
 
             if st.checkbox("Show Grad-CAM overlay", value=True):
-                heatmap = make_gradcam_heatmap(img, model)
                 overlay = apply_gradcam_overlay(image, heatmap)
                 
                 st.markdown("<div class='section-title' style='margin-top:24px;'>Grad-CAM explanation</div>", unsafe_allow_html=True)
